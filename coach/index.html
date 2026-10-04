@@ -1075,9 +1075,7 @@ function renderChat(){const box=$('#msgs');const nodes=[];
       el('p',{class:'lede',text:'כל אימון שתשמור כאן עובר אוטומטית ליומן של המאמן, והוא מנתח אותו ברגע שתפתח אותו. מדריך ההתקנה בפרופיל, תחת "סנכרון".'}),
       el('a',{class:'btn primary big',href:COACH_APP,target:'_blank',rel:'noopener',style:'text-decoration:none'},'פתח את המאמן'),
       el('p',{class:'lede',text:'בפעם הראשונה: פתח, ואז בדפדפן "הוסף למסך הבית". כך יהיו לך שתי אפליקציות: האימון והמאמן.'})));return;}
-  if(MODE==='coach'&&!sample)nodes.push(el('div',{class:'panel'},el('div',{class:'eyebrow',text:'הגדרה ראשונה'}),el('h3',{text:'חבר מנוע AI למאמן'}),
-    el('p',{class:'lede',text:'המאמן משתמש במנוע AI שאתה מחבר עם מפתח אישי. Gemini של Google חינמי עם מגבלת שימוש. המפתח נשמר רק בטלפון שלך.'}),
-    el('button',{class:'btn primary',onclick:()=>{show('profile');setTimeout(()=>$('#aiPanel')?.scrollIntoView({behavior:'smooth'}),50);},text:'להגדרת המנוע'})));
+  if(MODE==='coach')nodes.push(coachStatus());
   if(!sample&&!MODE)nodes.push(el('div',{class:'notice',text:'המאמן החכם פועל כשהעמוד פתוח באפליקציית Claude (אייפון/אנדרואיד) או ב־claude.ai כשאתה מחובר. האימון היומי, הטיימרים וההמלצות לאימון הבא עובדים גם בלי.'}));
   nodes.push(introCard());
   if(!S.chat.length)nodes.push(el('div',{class:'chips'},[['הדבק קוד מהאפליקציה',''],['למה הבטן לא נחטבת?','אם אני עושה הרבה בטן, השומן שם ירד מהר יותר?'],['גירעון או תחזוקה?','לפי הנתונים שלי, נכון להתחיל בגירעון מתון או באכילה סביב תחזוקה?'],['כמה חלבון?','כמה חלבון כדאי לי ביום ומאיזה אוכל?']].map(([l,t])=>el('button',{class:'chip',onclick:()=>{$('#chatIn').value=t;$('#chatIn').focus();autoGrow();if(!t)toast('הדבק כאן את הקוד ושלח');},text:l}))));
@@ -1121,7 +1119,7 @@ const TOOLS=[
     for(const it of Array.isArray(input.items)?input.items:[])if(it&&it.text)m.items.push({time:String(it.time||''),text:String(it.text)});
     if(input.drinks)m.drinks=String(input.drinks);if(input.hunger)m.hunger=String(input.hunger);if(input.partialDay!=null)m.partial=!!input.partialDay;persist('meals',m.id);note(`נרשם ביומן התזונה · ${fmtD(date)}`);return m;}}];
 let pendingNotes=[];function note(t){pendingNotes.push(t);}
-const ERR={not_granted:'לא ניתן אישור להשתמש ב־Claude מהעמוד הזה. אפשר לאשר בתפריט ההרשאות של העמוד.',sampling_disabled:'המאמן החכם לא זמין בחשבון הזה.',rate_limited:'יותר מדי בקשות או שהגעת למגבלת השימוש. נסה שוב בעוד כמה דקות.',session_expired:'צריך להתחבר מחדש ל־Claude.',image_rejected:'התמונה לא התקבלה. נסה JPG או PNG קטן יותר.',refused:'המאמן לא יכול לענות על זה. נסח מחדש.',prompt_too_large:'ההודעה ארוכה מדי. קצר אותה.',images_unavailable:'שליחת תמונות לא זמינה כאן.'};
+const ERR={bad_key:'מפתח ה־AI לא תקין. בדוק אותו בפרופיל, תחת מנוע המאמן.',bad_model:'שם המודל לא קיים. בפרופיל השאר את שם המודל ריק.',not_configured:'מנוע ה־AI לא מחובר. חבר אותו בפרופיל.',empty_completion:'המנוע החזיר תשובה ריקה. נסה שוב.',not_granted:'לא ניתן אישור להשתמש ב־Claude מהעמוד הזה. אפשר לאשר בתפריט ההרשאות של העמוד.',sampling_disabled:'המאמן החכם לא זמין בחשבון הזה.',rate_limited:'יותר מדי בקשות או שהגעת למגבלת השימוש. נסה שוב בעוד כמה דקות.',session_expired:'צריך להתחבר מחדש ל־Claude.',image_rejected:'התמונה לא התקבלה. נסה JPG או PNG קטן יותר.',refused:'המאמן לא יכול לענות על זה. נסח מחדש.',prompt_too_large:'ההודעה ארוכה מדי. קצר אותה.',images_unavailable:'שליחת תמונות לא זמינה כאן.'};
 async function sendChat(text,images){
   text=text.trim();if(!text&&!images.length)return;if(busy)return;if(!text)text='צירפתי תמונה.';
   if(/IRONLOG[01]:/.test(text)){importFromChat(text);return;}
@@ -1136,9 +1134,9 @@ async function sendChat(text,images){
   const finish=()=>{busy=false;$('#sendBtn').hidden=false;$('#stopBtn').hidden=true;persist('chat');renderProfile();renderFood();if(current==='progress')renderProgress();};
   try{const opts={signal:ctl.signal,cache:false,onText:({text})=>{bubble.replaceChildren(md(text));}};if(images.length)opts.images=images;if(canTools)opts.tools=TOOLS;
     const r=await sample(turns,opts);for(const n of pendingNotes)S.chat.push({role:'note',content:n,t:Date.now()});
-    S.chat.push({role:'assistant',content:r.text+(r.truncated?'\n\n_(התשובה נקטעה. בקש ממני להמשיך.)_':''),t:Date.now()});finish();renderChat();scrollChat();
-  }catch(e){for(const n of pendingNotes)S.chat.push({role:'note',content:n,t:Date.now()});if(e&&e.text&&e.code!=='refused')S.chat.push({role:'assistant',content:e.text+'\n\n_(נקטע)_',t:Date.now()});
-    finish();renderChat();if(e&&e.code!=='cancelled')$('#msgs').append(el('div',{class:'msg err',text:ERR[e?.code]||'החיבור נקטע. נסה לשלוח שוב.'}));scrollChat();}
+    S.chat.push({role:'assistant',content:r.text+(r.truncated?'\n\n_(התשובה נקטעה. בקש ממני להמשיך.)_':''),t:Date.now()});finish();renderChat();scrollChat();return true;
+  }catch(e){if(MODE==='coach'&&e&&e.code!=='cancelled'){S.chat.push({role:'note',content:'⚠ '+(ERR[e.code]||'החיבור למנוע נכשל')+(e.message&&e.code==='upstream_error'?` (${String(e.message).slice(0,80)})`:''),t:Date.now()});}for(const n of pendingNotes)S.chat.push({role:'note',content:n,t:Date.now()});if(e&&e.text&&e.code!=='refused')S.chat.push({role:'assistant',content:e.text+'\n\n_(נקטע)_',t:Date.now()});
+    finish();renderChat();if(e&&e.code!=='cancelled'&&MODE!=='coach')$('#msgs').append(el('div',{class:'msg err',text:ERR[e?.code]||'החיבור נקטע. נסה לשלוח שוב.'}));scrollChat();return false;}
 }
 function autoGrow(){const t=$('#chatIn');t.style.height='auto';t.style.height=Math.min(t.scrollHeight,140)+'px';}
 $('#chatIn').addEventListener('input',autoGrow);
@@ -1215,7 +1213,7 @@ async function cloudSync(){if(!CLOUD.token||!CLOUD.gist||syncing||navigator.onLi
     const mine=payloadData();if(!remote||JSON.stringify(mine)!==JSON.stringify(remote))await gh('PATCH','/gists/'+CLOUD.gist,{files:{[GIST_FILE]:{content:JSON.stringify({app:'ironlog',v:1,at:Date.now(),data:mine})}}});
     CLOUD.last=Date.now();CLOUD.err='';cloudSave();}
   catch(e){CLOUD.err=e.status===401?'הטוקן פג או בוטל. חבר מחדש.':e.status===404?'קובץ הסנכרון לא נמצא. חבר מחדש.':'הסנכרון נכשל, ננסה שוב.';cloudSave();}
-  finally{syncing=false;renderCloud();autoAnalyze();}}
+  finally{syncing=false;renderCloud();if(MODE==='coach'&&!busy)renderChat();autoAnalyze();}}
 function cloudStatus(t){const x=$('#cloudStatus');if(x)x.textContent=t;}
 function renderCloud(){const b=$('#cloudBox');if(!b)return;const sy=$('#sync');if(STANDALONE&&sy){sy.className='sync '+(CLOUD.token&&CLOUD.gist?(CLOUD.err?'err':'db'):'');sy.textContent=CLOUD.token&&CLOUD.gist?(CLOUD.err?'שגיאת סנכרון':'מסונכרן'):'שמור במכשיר';}
   if(CLOUD.token&&CLOUD.gist){b.replaceChildren(el('p',{class:'lede',id:'cloudStatus',text:CLOUD.err||(CLOUD.last?`מחובר ✓ · סנכרון אחרון ${new Date(CLOUD.last).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}`:'מחובר ✓')}),
@@ -1275,11 +1273,25 @@ function renderAI(){const b=$('#aiBox');if(!b)return;let prov=AI.provider;
       if(!AI.key){st.textContent='המפתח נמחק.';return;}st.textContent='בודק…';try{await aiSample([{role:'user',content:'ענה במילה אחת בעברית.'},{role:'user',content:'מוכן?'}]);st.textContent='✓ המנוע עובד';autoAnalyze();}
       catch(e){st.textContent=e.code==='bad_key'?'המפתח לא תקין.':e.code==='bad_model'?'שם המודל לא קיים. השאר ריק.':e.code==='rate_limited'?'המכסה החינמית נוצלה כרגע. נסה מאוחר יותר.':'הבדיקה נכשלה: '+(e.message||'');}},text:'שמור ובדוק'}),st));
   draw();}
-function autoAnalyze(){if(MODE!=='coach'||!sample||busy)return;S.coach=S.coach||{analyzed:[]};const done=new Set(S.coach.analyzed||[]);const since=iso(new Date(Date.now()-7*864e5));
-  const fresh=strengthList().filter(w=>!done.has(w.id)&&w.date>=since);if(!fresh.length)return;
-  S.coach.analyzed=[...done,...fresh.map(w=>w.id)].slice(-300);lsSave();
-  S.chat.push({role:'note',content:`ניתוח אוטומטי · ${fresh.length===1?'אימון חדש':fresh.length+' אימונים חדשים'}`,t:Date.now()});show('coach');
-  sendChat(sortW(fresh).slice(-3).map(workoutReport).join('\n\n')+'\n\n'+(fresh.length>1?`נתח את האימונים האלה ואת המגמה ביניהם: מה השתפר, מה לשפר, ועד שני דגשי טכניקה. בסס על המטרה שלי (${(S.profile.goals||[]).join(', ')}).`:analysisAsk()),[]);}
+const autoTried=new Set();
+function pendingAnalysis(){S.coach=S.coach||{analyzed:[]};const done=new Set(S.coach.analyzed||[]);const since=iso(new Date(Date.now()-7*864e5));return strengthList().filter(w=>!done.has(w.id)&&w.date>=since);}
+async function analyzeWorkouts(list,auto){if(!list.length||!sample||busy)return false;
+  S.chat.push({role:'note',content:`${auto?'ניתוח אוטומטי':'ניתוח'} · ${list.length===1?`אימון ${fmtD(list[0].date)}`:list.length+' אימונים'}`,t:Date.now()});show('coach');
+  const ok=await sendChat(sortW(list).slice(-3).map(workoutReport).join('\n\n')+'\n\n'+(list.length>1?`נתח את האימונים האלה ואת המגמה ביניהם: מה השתפר, מה לשפר, ועד שני דגשי טכניקה. בסס על המטרה שלי (${(S.profile.goals||[]).join(', ')}).`:analysisAsk()),[]);
+  if(ok){S.coach.analyzed=[...new Set([...(S.coach.analyzed||[]),...list.map(w=>w.id)])].slice(-300);lsSave();renderChat();}
+  return ok;}
+function autoAnalyze(){if(MODE!=='coach'||!sample||busy)return;const fresh=pendingAnalysis().filter(w=>!autoTried.has(w.id));if(!fresh.length)return;fresh.forEach(w=>autoTried.add(w.id));analyzeWorkouts(fresh,true);}
+function coachStatus(){const str=strengthList();const pend=pendingAnalysis();const last=str[str.length-1];
+  const row=(k,v,ok,btn)=>el('div',{class:'drow',style:'align-items:center'},el('div',{},el('div',{style:'font-size:.8rem;color:var(--muted)',text:k}),el('div',{style:'font-weight:700'},el('span',{class:'mark '+(ok?'ok':'no'),style:'display:inline-grid;margin-inline-end:8px;width:18px;height:18px;font-size:.7rem',text:ok?'✓':'!'}),v)),btn||el('span'));
+  const toProfile=t=>el('button',{class:'btn small',onclick:()=>{show('profile');setTimeout(()=>$(t)?.scrollIntoView({behavior:'smooth'}),60);},text:'לחבר'});
+  const hl=journalHighlights().slice(0,4);
+  return el('div',{class:'panel'},el('div',{},el('div',{class:'eyebrow',text:'מצב המאמן'}),el('h3',{text:last?`אימון אחרון: ${last.type} · ${fmtD(last.date)}`:'עוד אין אימונים ביומן'})),
+    el('div',{class:'list'},
+      row('מנוע AI',AI.key?(AI.provider==='claude'?'Claude API מחובר':'Gemini מחובר'):'לא מחובר — המאמן לא יכול לנתח',!!AI.key,AI.key?null:toProfile('#aiPanel')),
+      row('סנכרון',CLOUD.token&&CLOUD.gist?(CLOUD.err||(CLOUD.last?`מחובר · ${new Date(CLOUD.last).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}`:'מחובר')):'לא מחובר',!!(CLOUD.token&&CLOUD.gist&&!CLOUD.err),CLOUD.token?null:toProfile('#cloudPanel')),
+      row('ניתוחים',pend.length?`${pend.length} ${pend.length===1?'אימון ממתין':'אימונים ממתינים'} לניתוח`:(str.length?'כל האימונים נותחו':'אין אימונים לניתוח'),!pend.length,
+        sample&&(pend.length||last)?el('button',{class:'btn primary small',disabled:busy||null,onclick:()=>analyzeWorkouts(pend.length?pend:[last],false),text:pend.length?'נתח עכשיו':'נתח שוב'}):null)),
+    hl.length&&str.length?el('div',{},el('div',{class:'eyebrow',style:'margin-bottom:8px',text:'מהנתונים, גם בלי AI'}),el('div',{class:'achv'},el('ul',{},hl.map(h=>el('li',{},el('span',{class:'mark '+(h.c==='pr'?'pr':h.c==='ok'?'ok':'no'),text:h.c==='pr'?'★':h.c==='ok'?'✓':'!'}),el('span',{text:h.t})))))):null);}
 
 /* ================= boot ================= */
 function renderAll(){renderHeader();renderProfile();renderFood();renderChat();renderToday();if(current==='progress')renderProgress();}
