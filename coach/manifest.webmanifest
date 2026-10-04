@@ -1,8 +1,8 @@
 {
-  "id": "./",
-  "name": "יומן הברזל",
-  "short_name": "יומן הברזל",
-  "description": "אימון יומי לפי התוכנית, טיימרים, הישגים ויומן",
+  "id": "./coach/",
+  "name": "המאמן · יומן הברזל",
+  "short_name": "המאמן",
+  "description": "מאמן אישי: ניתוח אימונים, תזונה ויומן",
   "lang": "he",
   "dir": "rtl",
   "start_url": "./",
@@ -13,17 +13,17 @@
   "theme_color": "#0E1115",
   "icons": [
     {
-      "src": "icons/icon-192.png",
+      "src": "../icons/coach-192.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "icons/icon-512.png",
+      "src": "../icons/coach-512.png",
       "sizes": "512x512",
       "type": "image/png"
     },
     {
-      "src": "icons/icon-maskable-512.png",
+      "src": "../icons/coach-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
