@@ -158,6 +158,18 @@ th{font-size:.72rem;color:var(--muted);font-weight:700;white-space:nowrap}
 .toggle:active{transform:scale(.9)}
 .exrow.off .toggle{color:var(--muted)}
 
+/* day picker */
+.daypick{display:grid;grid-template-columns:repeat(var(--n,7),minmax(0,1fr));gap:6px}
+.daypick button{position:relative;border:1px solid var(--line);background:var(--panel2);border-radius:var(--r-s);padding:9px 2px 11px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;min-width:0;transition:background .2s,transform .12s var(--ease),border-color .2s}
+.daypick button:active{transform:scale(.94)}
+.daypick b{font-size:.95rem;font-weight:700;line-height:1.1}
+.daypick small{font-size:.68rem;color:var(--muted);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.daypick button.sched::after{content:"";position:absolute;bottom:4px;width:5px;height:5px;border-radius:50%;background:var(--brass)}
+.daypick button[aria-pressed="true"]{background:var(--brass);border-color:var(--brass);color:var(--brass-ink)}
+.daypick button[aria-pressed="true"] small{color:var(--brass-ink)}
+.daypick button[aria-pressed="true"].sched::after{background:var(--brass-ink)}
+.daypick button.rest b{color:var(--muted)}.daypick button.rest[aria-pressed="true"] b{color:var(--brass-ink)}
+
 /* demo */
 .demo{position:relative;aspect-ratio:3/2;max-width:100%;border-radius:var(--r);overflow:hidden;background:var(--panel2)}
 .demo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
@@ -340,6 +352,8 @@ section[data-view]:not([hidden])>*:nth-child(n+6),.layer-in>*:nth-child(n+6){ani
         <label class="field"><span>תחילת התוכנית</span><input type="date" id="p_startDate"></label>
         <label class="field"><span>זמן אימון יומי (דקות)</span><select id="p_timeBudget"><option value="30">30</option><option value="45">45</option><option value="60">60</option><option value="75">75</option><option value="90">90</option></select></label>
       </div>
+      <div class="field"><span>מבנה השבוע</span><div class="chips" id="schedChips"></div></div>
+      <div class="field" id="altRow" hidden><span>היום אצלי</span><div class="chips" id="altChips"></div></div>
       <label class="check"><input type="checkbox" id="p_holdSets"> ההתאוששות עדיין לא טובה. להישאר על 2 סטים לכל תרגיל</label>
       <label class="check"><input type="checkbox" id="p_autoCoach" checked> ניתוח אוטומטי של המאמן אחרי כל אימון</label>
     </div>
@@ -626,6 +640,19 @@ function recommend(key){const probe=makeEx(key);const fake={id:'_',date:'9999-12
 function recText(key){const e=EX[key];if(e.load==='bodyweight')return'משקל גוף';const r=recommend(key);if(!r||r.weight==null&&!r.label)return'סט ניסיון קל';if(r.label)return r.label;if(r.weight===0&&e.load==='total')return'ללא מוט';return`${r.weight} ק״ג`+(r.status==='up'?' ↑':'');}
 
 /* ================= time budget + session plan ================= */
+/* schedule: fixed weekdays, or a fixed one-day-on / one-day-off rhythm with the strength workouts in rotation */
+const isAlt=()=>S.profile.schedule==='alt';
+const addDays=(d,n)=>{const x=new Date(d+'T12:00');x.setDate(x.getDate()+n);return iso(x);};
+function isTrainDay(date){const a=S.profile.altAnchor||S.profile.startDate||todayISO();const d=Math.round((new Date(date+'T12:00')-new Date(a+'T12:00'))/864e5);return((d%2)+2)%2===0;}
+function planKeyOf(w){const d=w.planDay;if(d===0)return'A';if(d===3)return'B';if(d===1||d===5)return'L';if(d!=null)return null;const t=w.type||'';if(/ידיים/.test(t))return'B';if(/עליון/.test(t))return'A';if(/רגליים/.test(t))return'L';return null;}
+function nextRotation(beforeDate){const ks=strengthList().filter(w=>w.date<beforeDate).map(planKeyOf).filter(Boolean);const last=ks[ks.length-1];
+  if(!last)return 0;if(last==='A')return 1;if(last==='B')return 5;const up=ks.slice(0,-1).reverse().find(k=>k!=='L');return up==='A'?3:0;}
+function scheduledDay(date){if(!isAlt())return dayOf(date);return isTrainDay(date)?nextRotation(date):4;}
+function plannedStr(from,to){let n=0;for(let d=from;d<=to;d=addDays(d,1))if(isAlt()?isTrainDay(d):[0,1,3,5].includes(dayOf(d)))n++;return n;}
+const DSHORT={0:'עליון',1:'רגליים',2:'הליכה',3:'ידיים',4:'מנוחה',5:'רגליים',6:'הליכה'};
+const DLETTER=['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'];
+function dayPicker(sched,chosen,onPick){const opts=isAlt()?[[0,'עליון','ובטן'],[1,'רגליים','ובטן'],[3,'ידיים','עליון+'],[2,'הליכה','ובטן'],[4,'מנוחה','']]:[0,1,2,3,4,5,6].map(d=>[d,DLETTER[d],DSHORT[d]]);
+  return el('div',{class:'daypick',style:`--n:${opts.length}`},opts.map(([d,top,sub])=>el('button',{class:(d===sched?'sched ':'')+(d===4?'rest':''),'aria-pressed':String(d===chosen),'aria-label':`${isAlt()?top:DAYS[d]} · ${DAYPLAN[d].title}`,onclick:()=>onPick(d)},el('b',{text:top}),el('small',{text:sub||'\u00a0'}))));}
 function weekNo(date){const sd=S.profile.startDate;if(!sd)return 1;const d=(new Date(date+'T12:00')-new Date(sd+'T12:00'))/864e5;return Math.max(1,Math.floor(d/7)+1);}
 function setsFor(key,week){return week<=1||S.profile.holdSets?Math.min(2,EX[key].sets):EX[key].sets;}
 const setDur=key=>{const e=EX[key];return e.timed?40:(e.perSide||e.uni)?75:45;};
@@ -653,14 +680,16 @@ const TKEY=LS+'.today';
 let T={date:'',budget:null,dayIdx:null,excluded:[]};
 function loadT(){try{T=JSON.parse(localStorage.getItem(TKEY)||'null')||T;}catch(e){}if(T.date!==todayISO())T={date:todayISO(),budget:null,dayIdx:null,excluded:[]};}
 function saveT(){try{localStorage.setItem(TKEY,JSON.stringify(T));}catch(e){}}
-function renderHeader(){const d=new Date().getDay();$('#todayPlan').textContent=`היום ${DAYS[d]} · ${DAYPLAN[d].title}`;}
+function renderHeader(){const d=new Date().getDay();$('#todayPlan').textContent=`היום ${DAYS[d]} · ${DAYPLAN[scheduledDay(todayISO())].title}`;}
 function renderToday(){
-  loadT();const box=$('#todayBox');const today=todayISO();const realDay=new Date().getDay();const dayIdx=T.dayIdx??realDay;const plan=DAYPLAN[dayIdx];const week=weekNo(today);
+  loadT();const box=$('#todayBox');const today=todayISO();const realDay=new Date().getDay();const sched=scheduledDay(today);const dayIdx=T.dayIdx??sched;const plan=DAYPLAN[dayIdx];const swapped=dayIdx!==sched;const week=weekNo(today);
   const budget=T.budget??num(S.profile.timeBudget);
   const nodes=[];
-  nodes.push(el('div',{class:'hero'},el('span',{class:'day',text:`יום ${DAYS[realDay]} · ${fmtD(today)}`+(dayIdx!==realDay?` · אימון של יום ${DAYS[dayIdx]}`:'')}),el('h2',{text:plan.title}),
+  nodes.push(el('div',{class:'hero'},el('span',{class:'day',text:`יום ${DAYS[realDay]} · ${fmtD(today)}`+(isAlt()?` · ${isTrainDay(today)?'יום אימון':'יום מנוחה'}`:'')}),el('h2',{text:plan.title}),
     el('div',{class:'weekbar'},[1,2,3,4].map(i=>el('i',{class:i<=Math.min(week,4)?'on':''})),el('span',{text:week<=4?`שבוע ${week} מתוך 4`:`אחרי החודש הראשון`})),
     el('p',{class:'lede',text:week<=4?WEEKS[week-1]:'החודש הראשון הושלם. בקש מהמאמן לבנות את ההמשך לפי התוצאות.'})));
+  nodes.push(el('div',{class:'panel'},el('div',{},el('h3',{text:'איזה אימון היום?'}),el('p',{class:'lede',text:swapped?`בחרת ${isAlt()?'אימון אחר מהמתוכנן':`את האימון של יום ${DAYS[dayIdx]}`}. הוא יישמר על היום, ${DAYS[realDay]} ${fmtD(today)}.`:(isAlt()?'יום אימון ויום מנוחה לסירוגין. פספסת או רוצה אחר? בחר כאן, והאימון יישמר על היום.':'פספסת יום? בחר כל אימון מהשבוע, והוא יישמר על היום.')})),
+    dayPicker(sched,dayIdx,d=>{T.dayIdx=d===sched?null:d;T.excluded=[];saveT();renderToday();})));
   if(SES&&SES.date===today&&$('#player').hidden)nodes.push(el('div',{class:'notice'},el('b',{text:'יש אימון פתוח. '}),`${SES.walk?'הליכה':SES.title} · התחיל לפני ${Math.round((Date.now()-SES.t0)/60000)} דק׳`,el('div',{class:'actions',style:'margin-top:8px'},el('button',{class:'btn primary small',onclick:openPlayer,text:'חזור לאימון'}))));
   const doneToday=S.workouts.filter(w=>w.date===today&&w.source==='plan');
   if(doneToday.length){const w=sortW(doneToday).pop();nodes.push(el('div',{class:'panel done'},el('div',{class:'eyebrow',text:'הושלם היום'}),el('h3',{text:`${w.type} · ${Math.round((w.durationSec||0)/60)} דק׳`}),
@@ -686,7 +715,7 @@ function renderToday(){
   }else if(plan.kind==='walk'){
     const target=Math.max(25,Math.min(40,(budget||40)));
     nodes.push(el('div',{class:'panel'},el('h3',{text:`הליכה ${target} דק׳`}),el('p',{class:'lede',text:'25–40 דקות בקצב שמאפשר לדבר במשפטים. מתקדמים בהדרגה לכ־150 דקות אירובי מתון בשבוע.'}),
-      el('button',{class:'btn primary big',onclick:()=>startWalk(target),text:'התחל הליכה'})));
+      el('button',{class:'btn primary big',onclick:()=>startWalk(target,dayIdx),text:'התחל הליכה'})));
     const ck=plan.core;
     nodes.push(el('div',{class:'panel'},el('div',{class:'eyebrow',text:'תוספת בטן'}),el('h3',{text:'בטן אחרי ההליכה · ~8 דק׳'}),
       el('div',{class:'list'},ck.map(k=>{const e=EX[k];return el('div',{class:'exrow',role:'button',tabindex:'0',style:'grid-template-columns:60px minmax(0,1fr)',onclick:()=>openDemo(k)},el('img',{src:imgs(k)[0],alt:'',loading:'lazy'}),
@@ -694,11 +723,8 @@ function renderToday(){
       el('button',{class:'btn big',onclick:()=>startSession(dayIdx,{items:ck.map(k=>({key:k,sets:2})),warm:0,mode:'short'},week,10,'בטן אחרי ההליכה'),text:'התחל בטן'})));
   }else{
     nodes.push(el('div',{class:'panel'},el('h3',{text:'יום מנוחה'}),el('p',{class:'lede',text:'ההתאוששות היא חלק מהתוכנית. שינה טובה ואוכל מסודר היום יעזרו לאימון של מחר. אם בא לך לזוז, הליכה קלה בסדר גמור.'}),
-      el('button',{class:'btn',onclick:()=>startWalk(25),text:'הליכה קלה בכל זאת'})));
+      el('div',{class:'actions'},el('button',{class:'btn',onclick:()=>startWalk(25,4),text:'הליכה קלה'}),el('button',{class:'btn',onclick:()=>{T.dayIdx=2;saveT();renderToday();},text:'הליכה ובטן'}))));
   }
-  // swap workout (missed day)
-  nodes.push(el('details',{class:'how'},el('summary',{text:'פספסת אימון? להחליף את האימון של היום'}),el('div',{class:'body'},el('div',{class:'chips'},
-    [[realDay,'לפי היום'],[0,'עליון (ראשון)'],[3,'עליון + ידיים (רביעי)'],[1,'רגליים'],[2,'הליכה']].map(([d,l])=>el('button',{class:'chip','aria-pressed':String((T.dayIdx??realDay)===d&&(d!==realDay||l==='לפי היום')),onclick:()=>{T.dayIdx=d===realDay?null:d;T.excluded=[];saveT();renderToday();},text:l}))))));
   box.replaceChildren(...nodes.filter(Boolean));
 }
 
@@ -729,7 +755,7 @@ function startSession(dayIdx,fp,week,budget,title){
     items:fp.items.map(it=>({key:it.key,sets:it.sets,rest:restSec(it.key,fp.mode),rec:recommend(it.key)})),
     i:0,s:0,phase:fp.warm?'warmup':'ready',t0:Date.now(),at:Date.now(),restEnd:null,restFrom:null,log:{},skipped:[],beeped:0};
   sesSave();openPlayer();}
-function startWalk(target){initAudio();wake();bgStart();SES={id:'w'+uid(),date:todayISO(),walk:true,target,t0:Date.now(),at:Date.now(),phase:'walk',beeped:0};sesSave();openPlayer();}
+function startWalk(target,planDay){initAudio();wake();bgStart();SES={id:'w'+uid(),date:todayISO(),walk:true,target,planDay:planDay??null,t0:Date.now(),at:Date.now(),phase:'walk',beeped:0};sesSave();openPlayer();}
 function openPlayer(){$('#player').hidden=false;renderPlayer();clearInterval(tickT);tickT=setInterval(tick,250);bgStart();}
 function closePlayer(){$('#player').hidden=true;clearInterval(tickT);try{wakeLock?.release();}catch(e){}bgStop();}
 /* background: a near-silent audio loop keeps timers running with the screen locked; the media session shows the timer on the lock screen */
@@ -851,11 +877,11 @@ function tick(){if(!SES||$('#player').hidden)return;const now=Date.now();const c
   else if(SES.phase==='rest'){const left=(SES.restEnd-now)/1000;if(big)big.textContent=mmss(left);const arc=document.getElementById('ringArc');if(arc){const C=2*Math.PI*46;arc.setAttribute('stroke-dashoffset',String(C*(1-Math.max(0,left)/(SES.restPlanned||1))));}
     if(left<=3&&left>0&&SES.beeped<1){SES.beeped=1;beep(660,.1);beep(660,.1,1);beep(660,.1,2);}
     if(left<=0){const it=cur();alarm('המנוחה נגמרה',`${EX[it.key].n} · סט ${SES.s+1}/${it.sets}`);endRest();}}}
-function finishWalk(){const sec=Math.round((Date.now()-SES.at)/1000);const w={id:SES.id,created:SES.t0,date:SES.date,type:'הליכה',source:'plan',durationSec:sec,targetMin:SES.target,exercises:[]};
+function finishWalk(){const sec=Math.round((Date.now()-SES.at)/1000);const w={id:SES.id,created:SES.t0,date:SES.date,type:'הליכה',source:'plan',planDay:SES.planDay??null,durationSec:sec,targetMin:SES.target,exercises:[]};
   storeWorkout(w);sesClear();closePlayer();renderToday();toast(`הליכה של ${Math.round(sec/60)} דק׳ נשמרה`+(sec>=25*60?'. עמדת ביעד':''));}
 function sessionToWorkout(){
   const exs=SES.items.map(it=>{const x=makeEx(it.key);const lg=SES.log[it.key]||[];x.sets=lg.map(s=>({weight:s.weight,reps:s.reps,repsR:s.repsR,rir:s.rir,restTaken:s.restTaken}));x.techBreak=lg.some(s=>s.tb);x.plannedSets=it.sets;x.rest=`${it.rest} שנ׳`;x.restSec=it.rest;if(SES.skipped.includes(it.key)&&!lg.length)x.skipped=true;return x;});
-  return{id:SES.id,created:SES.t0,updated:Date.now(),date:SES.date,type:SES.title,source:'plan',week:SES.week,budgetMin:SES.budget,durationSec:Math.round((Date.now()-SES.t0)/1000),plannedSets:totalSets(),sleep:'',fatigue:'',pain:false,notes:'',exercises:exs};}
+  return{id:SES.id,created:SES.t0,updated:Date.now(),date:SES.date,type:SES.title,source:'plan',planDay:SES.dayIdx,week:SES.week,budgetMin:SES.budget,durationSec:Math.round((Date.now()-SES.t0)/1000),plannedSets:totalSets(),sleep:'',fatigue:'',pain:false,notes:'',exercises:exs};}
 
 /* ================= achievements ================= */
 function bestBefore(ex,w){const k=exKey(ex);let best=null;for(const o of S.workouts){if(o.id===w.id||(o.date+String(o.created))>=(w.date+String(w.created)))continue;for(const e of o.exercises||[]){if(exKey(e)!==k)continue;for(const s of setsDone(e)){const wt=num(s.weight)??0,r=repsOf(e,s);if(!best||wt>best.w||(wt===best.w&&r>best.r))best={w:wt,r};}}}return best;}
@@ -922,7 +948,8 @@ function finishView(w,mode){
 }
 function openEditor(w){const copy=clone(w);$('#player').hidden=false;clearInterval(tickT);$('#playerIn').replaceChildren(...finishView(copy,'edit').filter(Boolean));$('#player').scrollTop=0;}
 function storeWorkout(w){w.updated=Date.now();const i=S.workouts.findIndex(x=>x.id===w.id);if(i>=0)S.workouts[i]=w;else S.workouts.push(w);persist('workouts',w.id);}
-function workoutReport(w){const lines=[`דיווח אימון ${fmtD(w.date)} (${DAYS[dayOf(w.date)]}) · ${w.type}`+(w.week?` · שבוע ${w.week}`:'')];
+const swapNote=w=>w.planDay!=null&&!isAlt()&&w.planDay!==4&&w.planDay!==dayOf(w.date)?` · האימון של יום ${DAYS[w.planDay]}, בוצע היום`:'';
+function workoutReport(w){const lines=[`דיווח אימון ${fmtD(w.date)} (${DAYS[dayOf(w.date)]}) · ${w.type}`+swapNote(w)+(w.week?` · שבוע ${w.week}`:'')];
   if(w.durationSec)lines.push(`משך: ${Math.round(w.durationSec/60)} דק׳`+(w.budgetMin?` מתוך ${w.budgetMin} מתוכננות`:''));
   if(w.sleep)lines.push(`שינה: ${w.sleep} שעות`);if(w.fatigue)lines.push(`עייפות: ${w.fatigue}`);lines.push(w.pain?'דווח כאב/נימול/חולשה חדשה':'בלי כאב');
   for(const e of w.exercises||[])lines.push(`- ${e.name}: ${e.skipped?'דילוג':setsDone(e).map(s=>`${e.loadType==='bodyweight'?'':(s.weight===''?'?':s.weight)+'ק״ג×'}${e.unilateral&&s.repsR!==''?`ש${s.reps}/י${s.repsR}`:s.reps}${s.rir!==''?` RIR${s.rir}`:''}`).join(', ')||'—'}${e.loadType?` · ${LOAD[e.loadType]}`:''} · טווח ${e.repRange}${e.restSec?` · מנוחה ${e.restSec} שנ׳`:''}${e.techBreak?' · הטכניקה התפרקה':''}`);
@@ -935,7 +962,12 @@ const PF=['age','height','weight','waist','startDate','timeBudget','incMachine',
 const NUMF=['age','height','weight','waist','timeBudget','incMachine','incDb','incBar'];
 function goalChips(target,sel){target.replaceChildren(...GOALS.map(g=>el('button',{class:'chip','aria-pressed':String(sel.includes(g)),onclick:e=>{const i=sel.indexOf(g);if(i>=0)sel.splice(i,1);else sel.push(g);e.currentTarget.setAttribute('aria-pressed',String(i<0));},text:g})));}
 let goalSel=[];
-function renderProfile(){for(const f of PF){const i=$('#p_'+f);if(i&&document.activeElement!==i)i.value=S.profile[f]??'';}$('#p_holdSets').checked=!!S.profile.holdSets;$('#p_autoCoach').checked=S.profile.autoCoach!==false;goalSel=[...(S.profile.goals||[])];goalChips($('#goalChips'),goalSel);}
+function renderSchedule(){const sc=$('#schedChips');if(!sc)return;const alt=isAlt();
+  const set=patch=>{Object.assign(S.profile,patch,{updatedAt:Date.now()});persist('profile');T.dayIdx=null;saveT();renderSchedule();renderHeader();renderToday();if(current==='progress')renderProgress();toast('מבנה השבוע נשמר');};
+  sc.replaceChildren(...[['weekly','ימים קבועים (א׳ ב׳ ד׳ ו׳)'],['alt','יום אימון, יום מנוחה']].map(([v,l])=>el('button',{class:'chip','aria-pressed':String((v==='alt')===alt),onclick:()=>{if((v==='alt')!==alt)set(v==='alt'?{schedule:'alt',altAnchor:S.profile.altAnchor||todayISO()}:{schedule:'weekly'});},text:l})));
+  $('#altRow').hidden=!alt;if(!alt)return;const t=isTrainDay(todayISO());
+  $('#altChips').replaceChildren(...[[true,'יום אימון'],[false,'יום מנוחה']].map(([v,l])=>el('button',{class:'chip','aria-pressed':String(v===t),onclick:()=>{if(v!==t)set({altAnchor:v?todayISO():addDays(todayISO(),-1)});},text:l})));}
+function renderProfile(){for(const f of PF){const i=$('#p_'+f);if(i&&document.activeElement!==i)i.value=S.profile[f]??'';}$('#p_holdSets').checked=!!S.profile.holdSets;$('#p_autoCoach').checked=S.profile.autoCoach!==false;goalSel=[...(S.profile.goals||[])];goalChips($('#goalChips'),goalSel);renderSchedule();}
 $('#pSave').onclick=()=>{for(const f of PF){const v=$('#p_'+f).value.trim();if(v==='')delete S.profile[f];else S.profile[f]=NUMF.includes(f)?num(v):v;}
   S.profile.holdSets=$('#p_holdSets').checked;S.profile.autoCoach=$('#p_autoCoach').checked;S.profile.goals=[...goalSel];S.profile.updatedAt=Date.now();
   if(S.profile.weight)upsertBody(todayISO(),S.profile.weight,S.profile.waist,true);persist('profile');renderChat();renderToday();toast('הפרטים נשמרו');};
@@ -944,6 +976,7 @@ async function wipeAll(){const old={w:S.workouts.map(x=>x.id),m:S.meals.map(x=>x
   if(backend==='db'){for(const id of old.w)persist('workouts',id);for(const id of old.m)persist('meals',id);for(const id of old.b)persist('body',id);}persist('profile');persist('chat');$('#wipeBox').replaceChildren();renderAll();toast('היומן נמחק');maybeOnboard();}
 function lastSunday(){const d=new Date();d.setDate(d.getDate()-d.getDay());return iso(d);}
 function maybeOnboard(){if(S.profile.startDate||!$('#player').hidden)return;const sh=$('#sheet');const sel=[...(S.profile.goals||['גוף אתלטי וחטוב','הפחתת שומן'])];const g=el('div',{class:'chips'});goalChips(g,sel);
+  let schedSel=S.profile.schedule||'weekly';const scBox=el('div',{class:'chips'});const drawSc=()=>scBox.replaceChildren(...[['weekly','ימים קבועים'],['alt','יום אימון, יום מנוחה']].map(([v,l])=>el('button',{class:'chip','aria-pressed':String(schedSel===v),onclick:()=>{schedSel=v;drawSc();},text:l})));drawSc();
   const sd=el('input',{type:'date',value:lastSunday()});let tb=num(S.profile.timeBudget)||60;
   const tbBox=el('div',{class:'chips'});const drawTb=()=>tbBox.replaceChildren(...[30,45,60,75,90].map(m=>el('button',{class:'chip','aria-pressed':String(tb===m),onclick:()=>{tb=m;drawTb();},text:`${m} דק׳`})));drawTb();
   const wt=el('input',{type:'number',step:'0.1',inputmode:'decimal',class:'num',value:S.profile.weight??''});
@@ -951,13 +984,14 @@ function maybeOnboard(){if(S.profile.startDate||!$('#player').hidden)return;cons
   $('#sheetIn').replaceChildren(el('div',{},el('div',{class:'eyebrow',text:'ברוך הבא'}),el('h2',{text:'בוא נכוון את התוכנית'})),
     el('p',{class:'lede',text:'התוכנית שלך כבר בפנים: 4 אימוני כוח, 2 הליכות ויום מנוחה בשבוע. נשארו כמה הגדרות.'}),
     el('div',{class:'panel'},el('h3',{text:'מה המטרה?'}),g),
+    el('div',{class:'panel'},el('h3',{text:'איך לבנות את השבוע?'}),scBox,el('p',{class:'lede',text:'ימים קבועים: ראשון, שני, רביעי ושישי. יום אימון ויום מנוחה: לסירוגין, החל מהיום.'})),
     el('div',{class:'panel'},el('h3',{text:'כמה זמן יש לך בדרך כלל לאימון?'}),tbBox,el('p',{class:'lede',text:'אפשר לשנות בכל יום במסך "היום".'})),
     el('div',{class:'panel'},el('label',{class:'field'},el('span',{text:'מתי התחלת או מתחיל את התוכנית (קובע את מספר השבוע)'}),sd),el('label',{class:'field'},el('span',{text:'משקל גוף נוכחי, ק״ג (רשות)'}),wt)),
     el('div',{class:'panel'},el('h3',{text:'התוספת הקטנה שיש בציוד (רשות)'}),el('div',{class:'row'},el('label',{class:'field'},el('span',{text:'מכונות וכבלים'}),im),el('label',{class:'field'},el('span',{text:'משקולות יד'}),idb)),el('p',{class:'lede',text:'אם לא ידוע עכשיו, תמלא אחר כך בפרופיל.'})),
     el('div',{class:'panel'},el('h3',{text:'מה האפליקציה תדרוש ממך'}),el('ul',{class:'lede',style:'margin:0;padding-inline-start:1.2em'},
       el('li',{text:'4 אימוני כוח ו־2 הליכות בשבוע, יום מנוחה ביום חמישי.'}),el('li',{text:'כל סט נעצר כשנשארות 2–3 חזרות טובות. לא עובדים עד כשל.'}),el('li',{text:'רישום משקל, חזרות ו־RIR בכל סט, כדי שההמלצה לאימון הבא תהיה מדויקת.'}),el('li',{text:'דיווח אוכל יומי, ומעקב משקל ומותניים כמה פעמים בשבוע.'}),
       el('li',{text:'בחודש הראשון המטרה היא טכניקה, כוח והתמדה. שינוי במראה תלוי גם בתזונה ובהתאוששות, ואין התחייבות למראה מסוים בתוך חודש.'}))),
-    el('button',{class:'btn primary big',onclick:()=>{S.profile.goals=sel;S.profile.updatedAt=Date.now();S.profile.startDate=sd.value||todayISO();S.profile.timeBudget=tb;if(num(wt.value)!=null){S.profile.weight=num(wt.value);upsertBody(todayISO(),S.profile.weight,null,true);}
+    el('button',{class:'btn primary big',onclick:()=>{S.profile.goals=sel;S.profile.updatedAt=Date.now();S.profile.schedule=schedSel;if(schedSel==='alt'&&!S.profile.altAnchor)S.profile.altAnchor=todayISO();S.profile.startDate=sd.value||todayISO();S.profile.timeBudget=tb;if(num(wt.value)!=null){S.profile.weight=num(wt.value);upsertBody(todayISO(),S.profile.weight,null,true);}
       if(num(im.value)!=null)S.profile.incMachine=num(im.value);if(num(idb.value)!=null)S.profile.incDb=num(idb.value);persist('profile');sh.hidden=true;renderAll();toast('יאללה, מתחילים');},text:'יאללה, מתחילים'}));
   sh.hidden=false;sh.scrollTop=0;}
 
@@ -991,7 +1025,7 @@ function spark(vals){const W=90,H=26;const ns='http://www.w3.org/2000/svg';const
   const pl=document.createElementNS(ns,'polyline');pl.setAttribute('points',pts.map(p=>p.join(',')).join(' '));pl.setAttribute('fill','none');pl.setAttribute('stroke','var(--brass)');pl.setAttribute('stroke-width','2');pl.setAttribute('stroke-linejoin','round');svg.append(pl);
   const c=document.createElementNS(ns,'circle');const l=pts[pts.length-1];c.setAttribute('cx',l[0]);c.setAttribute('cy',l[1]);c.setAttribute('r','2.8');c.setAttribute('fill','var(--brass-hi)');svg.append(c);return svg;}
 function journalHighlights(){const H=[];const add=(t,c)=>H.push({t,c});const str=strengthList();const ws=lastSunday();const dow=new Date().getDay();
-  const plannedSoFar=[0,1,3,5].filter(d=>d<=dow).length;const doneStr=str.filter(w=>w.date>=ws).length;
+  const plannedSoFar=plannedStr(ws,todayISO());const doneStr=str.filter(w=>w.date>=ws).length;
   if(plannedSoFar){if(doneStr<plannedSoFar)add(`השבוע ביצעת ${doneStr} מתוך ${plannedSoFar} אימוני הכוח שתוכננו עד היום. אפשר להשלים אימון שפספסת דרך "להחליף את האימון של היום".`,'no');else add(`השבוע אתה בקצב: ${doneStr} אימוני כוח מתוך ${plannedSoFar} שתוכננו עד היום.`,'ok');}
   const lw=str[str.length-1];if(lw){const a=achievements(lw);a.prs.forEach(t=>add(t,'pr'));}
   const keys=Object.keys(EX);const ups=keys.filter(k=>recommend(k)?.status==='up').map(k=>EX[k].n);if(ups.length)add(`מוכן להעלות באימון הבא: ${ups.join(', ')}.`,'pr');
@@ -1012,7 +1046,7 @@ function goalRows(){const goals=S.profile.goals||[];const rows=[];const ws=lastS
     else if(g==='כוח'){const ks=Object.keys(EX).filter(k=>EX[k].load!=='bodyweight');let up=0,m=0;for(const k of ks){const h=exHistory(k);if(h.length>=2){m++;if(h[h.length-1].top>h[0].top||(h[h.length-1].top===h[0].top&&h[h.length-1].reps>h[0].reps))up++;}}
       rows.push([g,m?`השתפרת ב־${up} מתוך ${m} תרגילים מאז האימון הראשון.`:'צריך לפחות שני אימונים לכל תרגיל.']);}
     else if(g==='גוף אתלטי וחטוב'){const since=iso(new Date(Date.now()-13*864e5));const s2=strengthList().filter(w=>w.date>=since).length,w2=S.workouts.filter(w=>w.date>=since&&w.type==='הליכה').length;
-      rows.push([g,`עקביות ב־14 הימים האחרונים: ${s2}/8 אימוני כוח, ${w2}/4 הליכות. עקביות היא הגורם הכי חשוב בחודש הראשון.`]);}
+      rows.push([g,`עקביות ב־14 הימים האחרונים: ${s2}/${plannedStr(since,todayISO())} אימוני כוח, ${w2}/4 הליכות. עקביות היא הגורם הכי חשוב בחודש הראשון.`]);}
     else if(g==='כושר וסיבולת'){const m=Math.round(wk.filter(w=>w.type==='הליכה').reduce((a,w)=>a+(w.durationSec||0),0)/60);rows.push([g,`${m} דקות הליכה השבוע, מתוך יעד של כ־150 דקות אירובי מתון.`]);}
   }return rows;}
 function renderJournal(){
@@ -1030,7 +1064,7 @@ function renderProgress(){renderJournal();
   let rirN=0,rirOk=0;for(const w of wk)for(const e of w.exercises||[])for(const s of setsDone(e)){const r=num(s.rir);if(r!=null){rirN++;if(r>=2&&r<=3)rirOk++;}}
   const g=(label,val,max,suffix)=>el('div',{class:'goalrow'},el('span',{text:label}),el('span',{class:'val',text:`${val}/${max}${suffix||''}`}),el('div',{class:'meter'},el('i',{style:`width:${Math.min(100,Math.round(val/max*100))}%`})));
   $('#weekGoals').replaceChildren(el('div',{},el('div',{class:'eyebrow',text:`שבוע ${weekNo(todayISO())} בתוכנית`}),el('h3',{text:'יעדי השבוע'})),
-    g('אימוני כוח',str,4),g('הליכות',walks,2),g('אימונים עם בטן',wk.filter(hasCore).length,6),g('דקות הליכה (יעד ביניים)',walkMin,60),
+    g('אימוני כוח',str,plannedStr(ws,addDays(ws,6))),g('הליכות',walks,2),g('אימונים עם בטן',wk.filter(hasCore).length,6),g('דקות הליכה (יעד ביניים)',walkMin,60),
     rirN?g('סטים עם 2–3 ברזרבה',rirOk,rirN):el('p',{class:'lede',text:'סטים עם 2–3 חזרות ברזרבה יופיעו כאן אחרי האימון הראשון.'}),
     ...goalRows().map(([g,t])=>el('div',{style:'border-top:1px solid var(--line);padding-top:8px'},el('b',{text:g}),el('p',{class:'lede',style:'margin:2px 0 0',text:t}))),
     ...(S.profile.goals?.length?[]:[el('p',{class:'lede',text:'בחר מטרות בפרופיל, והיומן יראה כאן את ההתקדמות אליהן.'})]));
@@ -1082,7 +1116,7 @@ function renderChat(){const box=$('#msgs');const nodes=[];
   for(const m of S.chat){if(m.role==='user')nodes.push(el('div',{class:'msg user',text:m.content}));else if(m.role==='assistant'){const b=el('div',{class:'msg assistant'});b.append(md(m.content));nodes.push(b);}else if(m.role==='note')nodes.push(el('div',{class:String(m.content).startsWith('⚠')?'msg err':'msg note',text:m.content}));}
   box.replaceChildren(...nodes);}
 function scrollChat(){requestAnimationFrame(()=>scrollPage(true));}
-function compactWorkout(w){return{date:w.date,day:DAYS[dayOf(w.date)],type:w.type,week:w.week,minutes:w.durationSec?Math.round(w.durationSec/60):undefined,sleep:w.sleep||undefined,fatigue:w.fatigue||undefined,pain:w.pain||undefined,notes:w.notes||undefined,
+function compactWorkout(w){return{date:w.date,day:DAYS[dayOf(w.date)],type:w.type,planDay:w.planDay!=null?DAYS[w.planDay]:undefined,week:w.week,minutes:w.durationSec?Math.round(w.durationSec/60):undefined,sleep:w.sleep||undefined,fatigue:w.fatigue||undefined,pain:w.pain||undefined,notes:w.notes||undefined,
   exercises:(w.exercises||[]).map(e=>({name:e.name,load:LOAD[e.loadType]||'לא צוין',repRange:e.repRange,sets:setsText(e),rest:e.restSec,techBreak:e.techBreak||undefined}))};}
 function buildContext(){const now=new Date();const ws=sortW(S.workouts);const strength=ws.filter(w=>w.type!=='הליכה');
   const data={trainingPlan:PLAN_TEXT+'\n'+ABS_TEXT,programWeek:weekNo(todayISO()),profile:S.profile,bodyLog:[...S.body].sort((a,b)=>a.date.localeCompare(b.date)).slice(-21).map(b=>({date:b.date,weight:b.weight,waist:b.waist})),
@@ -1092,7 +1126,8 @@ function buildContext(){const now=new Date();const ws=sortW(S.workouts);const st
 ---
 הקשר מהאפליקציה "יומן הברזל" (לא מהמשתמש ישירות):
 - האפליקציה מריצה את האימון היומי לפי התוכנית עם טיימרים, רושמת משקל, חזרות ו־RIR לכל סט, ושומרת פרופיל, תזונה ומדידות. הנתונים למטה כבר נמסרו: אל תשאל עליהם שוב.
-- היום ${DAYS[now.getDay()]} ${fmtD(todayISO())}, השעה ${pad(now.getHours())}:${pad(now.getMinutes())}. לפי התוכנית היום: ${DAYPLAN[now.getDay()].title}.
+- היום ${DAYS[now.getDay()]} ${fmtD(todayISO())}, השעה ${pad(now.getHours())}:${pad(now.getMinutes())}. לפי התוכנית היום: ${DAYPLAN[scheduledDay(todayISO())].title}.
+- מבנה השבוע: ${isAlt()?'יום אימון ויום מנוחה לסירוגין (במקום ימים קבועים). אימוני הכוח מתחלפים לפי הסדר: עליון ובטן, רגליים ובטן, עליון ידיים ובטן, רגליים ובטן. יעד הכוח השבועי הוא מספר ימי האימון שיצאו באותו שבוע.':'ימים קבועים לפי התוכנית.'} אימון שבוצע ביום אחר מהמתוכנן נשמר בתאריך שבו בוצע, ו־planDay מציין של איזה יום בתוכנית הוא.
 - כתוב בעברית, קצר ומותאם למסך טלפון, ב־Markdown (טבלאות מותרות). בלי הקדמות.
 - טבלת ההחלטות מחושבת באפליקציה לפי כללי ההתקדמות. הצג אותה כבסיס, ושנה רק מסיבה ברורה שהאפליקציה לא רואה, עם הסבר.
 ${canTools?'- יש לך כלים: update_profile, log_workout, log_meals. כשהמשתמש מוסר בצ׳אט פרטים, אימון שלא נרשם באפליקציה או ארוחות — שמור בכלי המתאים. אל תשמור ניחושים; שאל כשמספר לא ברור. אל תשמור שוב אימון שכבר מופיע ב־recentWorkouts. אחרי משוב תזונתי עדכן nutritionFocus.':'- אין לך כלי שמירה בתצוגה הזו. אם המשתמש מוסר נתונים, הזכר לו לרשום אותם בלשונית המתאימה.'}
