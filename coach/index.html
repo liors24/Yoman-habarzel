@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="../icons/coach-apple.png">
 <link rel="icon" href="../icons/coach-192.png">
@@ -32,7 +32,8 @@
   --r:16px; --r-s:12px; --tab-h:64px; --gap:20px; --pad:16px;
   --ease:cubic-bezier(.2,.8,.2,1);
 }
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 [hidden]{display:none!important}
 html,body{background:var(--bg);color:var(--ink)}
 body{font-family:var(--f-body);font-size:16px;line-height:1.5;overscroll-behavior-y:none}
@@ -303,6 +304,7 @@ section[data-view]:not([hidden])>*:nth-child(n+6),.layer-in>*:nth-child(n+6){ani
 
   <section data-view="food" hidden>
     <div><h2>מה אכלתי</h2><p class="lede">כמויות משוערות מספיקות. כתוב גם שמן, רטבים ושתייה. המאמן מעריך קלוריות וחלבון כטווח.</p></div>
+    <div class="panel" id="waterBox"></div>
     <div class="panel">
       <label class="field"><span>תאריך</span><input type="date" id="fDate"></label>
       <div class="row">
@@ -355,6 +357,7 @@ section[data-view]:not([hidden])>*:nth-child(n+6),.layer-in>*:nth-child(n+6){ani
       <div class="field"><span>מבנה השבוע</span><div class="chips" id="schedChips"></div></div>
       <div class="field" id="altRow" hidden><span>היום אצלי</span><div class="chips" id="altChips"></div></div>
       <label class="check"><input type="checkbox" id="p_holdSets"> ההתאוששות עדיין לא טובה. להישאר על 2 סטים לכל תרגיל</label>
+      <label class="check"><input type="checkbox" id="p_lockTimer"> טיימר במסך הנעילה (עוצר מוזיקה שמתנגנת ברקע)</label>
       <label class="check"><input type="checkbox" id="p_autoCoach" checked> ניתוח אוטומטי של המאמן אחרי כל אימון</label>
     </div>
     <div class="panel">
@@ -528,6 +531,11 @@ function orientFix(){const h=document.documentElement;h.classList.remove('rot-l'
   h.classList.add(a===-90?'rot-r':'rot-l');}
 addEventListener('resize',orientFix);addEventListener('orientationchange',()=>setTimeout(orientFix,80));
 try{screen.orientation&&screen.orientation.lock&&screen.orientation.lock('portrait').catch(()=>{});}catch(e){}
+/* no zoom: block double-tap and pinch zoom (iOS ignores the viewport setting for pinch) */
+['gesturestart','gesturechange','gestureend'].forEach(t=>document.addEventListener(t,e=>e.preventDefault(),{passive:false}));
+document.addEventListener('dblclick',e=>e.preventDefault(),{passive:false});
+document.addEventListener('touchmove',e=>{if(e.touches&&e.touches.length>1)e.preventDefault();},{passive:false});
+let lastTouchEnd=0;document.addEventListener('touchend',e=>{const n=Date.now();if(n-lastTouchEnd<320&&!e.target.closest('input,textarea,select'))e.preventDefault();lastTouchEnd=n;},{passive:false});
 const DAYS=['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
 const LOAD={per_hand:'לכל יד',total:'כולל המוט',machine:'המספר במכונה',bodyweight:'משקל גוף'};
 const pad=n=>String(n).padStart(2,'0');
@@ -744,7 +752,8 @@ const SKEY=LS+'.session';
 let SES=null,tickT=null,audio=null,wakeLock=null;
 function sesSave(){try{localStorage.setItem(SKEY,JSON.stringify(SES));}catch(e){}}
 function sesClear(){SES=null;try{localStorage.removeItem(SKEY);}catch(e){}}
-function initAudio(){try{audio=audio||new (window.AudioContext||window.webkitAudioContext)();audio.resume?.();}catch(e){}}
+function ambient(){try{if(navigator.audioSession)navigator.audioSession.type=S.profile.lockTimer?'playback':'ambient';}catch(e){}}
+function initAudio(){ambient();try{audio=audio||new (window.AudioContext||window.webkitAudioContext)();audio.resume?.();}catch(e){}}
 function beep(f=880,d=.15,when=0){if(!audio)return;try{const o=audio.createOscillator(),g=audio.createGain();o.frequency.value=f;o.connect(g);g.connect(audio.destination);const t=audio.currentTime+when;g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.35,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+d);o.start(t);o.stop(t+d+.02);}catch(e){}}
 function buzz(p){try{navigator.vibrate?.(p);}catch(e){}}
 async function wake(){try{wakeLock=await navigator.wakeLock?.request('screen');}catch(e){}}
@@ -765,16 +774,16 @@ function wavURL(sec,freq,vol){const sr=8000,n=Math.floor(sr*sec),b=new ArrayBuff
   for(let i=0;i<n;i++){let x;if(freq){const t=i/sr;x=(t%0.4)<0.22?Math.sin(2*Math.PI*freq*t)*vol*32767:0;}else x=(i%2?1:-1);v.setInt16(44+i*2,x,true);}
   return URL.createObjectURL(new Blob([b],{type:'audio/wav'}));}
 let bgA=null,bgB=null,lastMedia=0;
-function bgStart(){try{if(!bgA){bgA=new Audio(wavURL(2,0,0));bgA.loop=true;bgA.setAttribute('playsinline','');bgB=new Audio(wavURL(1.2,880,.7));bgB.setAttribute('playsinline','');}
+function bgStart(){ambient();if(!S.profile.lockTimer){bgStop();return;}try{if(!bgA){bgA=new Audio(wavURL(2,0,0));bgA.loop=true;bgA.setAttribute('playsinline','');bgB=new Audio(wavURL(1.2,880,.7));bgB.setAttribute('playsinline','');}
   bgA.play().catch(()=>{});const ms=navigator.mediaSession;
   if(ms){const h=(a,f)=>{try{ms.setActionHandler(a,f);}catch(e){}};h('play',()=>bgA.play());h('pause',()=>bgA.pause());
     h('nexttrack',()=>{if(!SES)return;if(SES.phase==='rest')endRest();else if(SES.phase==='ready')go('set');else if(SES.phase==='warmup')go('ready');});}}catch(e){}mediaUpdate(true);}
 function bgStop(){try{bgA&&bgA.pause();if(navigator.mediaSession){navigator.mediaSession.metadata=null;try{navigator.mediaSession.setPositionState();}catch(e){}}}catch(e){}}
 function askNotify(){try{if(STANDALONE&&window.Notification&&Notification.permission==='default')Notification.requestPermission().catch?.(()=>{});}catch(e){}}
-function alarm(title,body){try{if(bgB){bgB.currentTime=0;bgB.play().catch(()=>{});}}catch(e){}beep(990,.35);buzz([250,120,250]);
+function alarm(title,body){try{if(bgB&&S.profile.lockTimer){bgB.currentTime=0;bgB.play().catch(()=>{});}}catch(e){}beep(990,.35);buzz([250,120,250]);
   try{if(document.hidden&&window.Notification&&Notification.permission==='granted'){const opt={body,icon:ICON,tag:'ironlog',renotify:true,vibrate:[250,120,250]};
     (navigator.serviceWorker?navigator.serviceWorker.getRegistration():Promise.resolve(null)).then(r=>r?r.showNotification(title,opt):new Notification(title,opt)).catch(()=>{});}}catch(e){}}
-function mediaUpdate(force){const ms=navigator.mediaSession;if(!ms||!SES||!window.MediaMetadata)return;const now=Date.now();if(!force&&now-lastMedia<1000)return;lastMedia=now;
+function mediaUpdate(force){const ms=navigator.mediaSession;if(!ms||!SES||!window.MediaMetadata||!S.profile.lockTimer)return;const now=Date.now();if(!force&&now-lastMedia<1000)return;lastMedia=now;
   let title='יומן הברזל',artist='';
   if(SES.walk){title=`הליכה ${mmss((now-SES.at)/1000)}`;artist=`יעד ${SES.target} דק׳`;}
   else if(SES.phase==='warmup'){title=`חימום ${mmss(SES.warm*60-(now-SES.at)/1000)}`;artist='אחר כך: '+EX[SES.items[0].key].n;}
@@ -858,7 +867,7 @@ function renderPlayer(){
     if(nxt){const e=EX[nxt.key];n.push(el('div',{class:'panel'},el('div',{class:'eyebrow',text:SES.s===0?'התרגיל הבא':'הסט הבא'}),el('h3',{text:`${e.n} · סט ${SES.s+1}/${nxt.sets}`}),SES.s===0?demoBox(nxt.key):null,
       el('p',{class:'lede',text:`${e.r[0]===e.r[1]?e.r[0]:e.r[0]+'–'+e.r[1]}${e.timed?' שנ׳':' חזרות'}`+(e.load!=='bodyweight'&&recWeightFor(nxt)!==''?` · ${recWeightFor(nxt)} ק״ג`:'')})));}
     n.push(el('button',{class:'btn primary big',onclick:endRest,text:'סיים מנוחה, אני מוכן'}));
-    n.push(el('p',{class:'lede center',text:'אפשר לנעול את הטלפון. הטיימר ממשיך ומופיע במסך הנעילה, ובסוף המנוחה יישמע צפצוף.'}));
+    n.push(el('p',{class:'lede center',text:S.profile.lockTimer?'אפשר לנעול את הטלפון. הטיימר מופיע במסך הנעילה, ובסוף המנוחה יישמע צפצוף.':'המסך נשאר דלוק בזמן האימון. הצפצוף מתנגן מעל המוזיקה בלי לעצור אותה.'}));
   }else if(SES.phase==='finish'){
     P.replaceChildren(...finishView(sessionToWorkout(),'new').filter(Boolean));return;
   }
@@ -967,9 +976,9 @@ function renderSchedule(){const sc=$('#schedChips');if(!sc)return;const alt=isAl
   sc.replaceChildren(...[['weekly','ימים קבועים (א׳ ב׳ ד׳ ו׳)'],['alt','יום אימון, יום מנוחה']].map(([v,l])=>el('button',{class:'chip','aria-pressed':String((v==='alt')===alt),onclick:()=>{if((v==='alt')!==alt)set(v==='alt'?{schedule:'alt',altAnchor:S.profile.altAnchor||todayISO()}:{schedule:'weekly'});},text:l})));
   $('#altRow').hidden=!alt;if(!alt)return;const t=isTrainDay(todayISO());
   $('#altChips').replaceChildren(...[[true,'יום אימון'],[false,'יום מנוחה']].map(([v,l])=>el('button',{class:'chip','aria-pressed':String(v===t),onclick:()=>{if(v!==t)set({altAnchor:v?todayISO():addDays(todayISO(),-1)});},text:l})));}
-function renderProfile(){for(const f of PF){const i=$('#p_'+f);if(i&&document.activeElement!==i)i.value=S.profile[f]??'';}$('#p_holdSets').checked=!!S.profile.holdSets;$('#p_autoCoach').checked=S.profile.autoCoach!==false;goalSel=[...(S.profile.goals||[])];goalChips($('#goalChips'),goalSel);renderSchedule();}
+function renderProfile(){for(const f of PF){const i=$('#p_'+f);if(i&&document.activeElement!==i)i.value=S.profile[f]??'';}$('#p_holdSets').checked=!!S.profile.holdSets;$('#p_autoCoach').checked=S.profile.autoCoach!==false;$('#p_lockTimer').checked=!!S.profile.lockTimer;goalSel=[...(S.profile.goals||[])];goalChips($('#goalChips'),goalSel);renderSchedule();}
 $('#pSave').onclick=()=>{for(const f of PF){const v=$('#p_'+f).value.trim();if(v==='')delete S.profile[f];else S.profile[f]=NUMF.includes(f)?num(v):v;}
-  S.profile.holdSets=$('#p_holdSets').checked;S.profile.autoCoach=$('#p_autoCoach').checked;S.profile.goals=[...goalSel];S.profile.updatedAt=Date.now();
+  S.profile.holdSets=$('#p_holdSets').checked;S.profile.autoCoach=$('#p_autoCoach').checked;S.profile.lockTimer=$('#p_lockTimer').checked;S.profile.goals=[...goalSel];S.profile.updatedAt=Date.now();
   if(S.profile.weight)upsertBody(todayISO(),S.profile.weight,S.profile.waist,true);persist('profile');renderChat();renderToday();toast('הפרטים נשמרו');};
 $('#wipe').onclick=()=>{const b=$('#wipeBox');b.replaceChildren(el('div',{class:'confirm'},el('b',{text:'למחוק את כל האימונים, התזונה, המדידות והצ׳אט? אי אפשר לשחזר.'}),el('div',{class:'actions'},el('button',{class:'btn danger',onclick:wipeAll,text:'כן, למחוק הכל'}),el('button',{class:'btn ghost',onclick:()=>b.replaceChildren(),text:'ביטול'}))));};
 async function wipeAll(){const old={w:S.workouts.map(x=>x.id),m:S.meals.map(x=>x.id),b:S.body.map(x=>x.id)};S.workouts=[];S.meals=[];S.body=[];S.chat=[];S.profile={age:23,height:173};
@@ -1003,7 +1012,14 @@ $('#bSave').onclick=()=>{const w=num($('#bWeight').value),z=num($('#bWaist').val
 
 /* ================= food ================= */
 function mealDay(date,create){let m=S.meals.find(x=>x.date===date);if(!m&&create){m={id:date,date,items:[],drinks:'',hunger:'',partial:false};S.meals.push(m);}return m;}
-function renderFood(){const date=$('#fDate').value||todayISO();const m=mealDay(date);
+function waterTarget(date){const w=num(S.profile.weight)||70;const base=Math.round(w*35/100)*100;const k=DAYPLAN[scheduledDay(date)].kind;return base+(k==='str'?500:k==='walk'?250:0);}
+function renderWater(date){const m=mealDay(date);const ml=num(m?.water)||0;const t=waterTarget(date);const pct=Math.min(100,Math.round(ml/t*100));
+  const add=d=>{const mm=mealDay(date,true);mm.water=Math.max(0,(num(mm.water)||0)+d);mm.updated=Date.now();persist('meals',mm.id);renderWater(date);if(d>0&&(num(mm.water)||0)>=t&&ml<t)toast('עמדת ביעד המים של היום 💧');};
+  const k=DAYPLAN[scheduledDay(date)].kind;
+  $('#waterBox').replaceChildren(el('div',{class:'goalrow'},el('div',{},el('div',{class:'eyebrow',text:'מים'}),el('h3',{text:`${(ml/1000).toLocaleString('he-IL',{maximumFractionDigits:2})} מתוך ${(t/1000).toLocaleString('he-IL',{maximumFractionDigits:1})} ליטר`})),el('span',{class:'val',text:`${pct}%`}),el('div',{class:'meter'},el('i',{style:`width:${pct}%`}))),
+    el('div',{class:'actions'},el('button',{class:'btn primary small',onclick:()=>add(250),text:'+ כוס (250)'}),el('button',{class:'btn small',onclick:()=>add(500),text:'+ בקבוק (500)'}),el('button',{class:'btn ghost small',onclick:()=>add(-250),text:'−250'})),
+    el('p',{class:'lede',style:'font-size:.8rem',text:`יעד: כ־35 מ״ל לכל ק״ג משקל גוף${k==='str'?', ועוד חצי ליטר ביום אימון כוח':k==='walk'?', ועוד רבע ליטר ביום הליכה':''}. יותר בימים חמים או כשמזיעים הרבה.`}));}
+function renderFood(){const date=$('#fDate').value||todayISO();const m=mealDay(date);renderWater(date);
   $('#fDrinks').value=m?.drinks||'';$('#fHunger').value=m?.hunger||'';$('#fPartial').checked=m?!!m.partial:(date===todayISO()&&new Date().getHours()<20);
   const items=m?.items||[];
   $('#fItems').replaceChildren(items.length?el('div',{class:'list'},[...items].sort((a,b)=>(a.time||'').localeCompare(b.time||'')).map(it=>el('div',{class:'drow',style:'align-items:center'},el('div',{},el('span',{class:'num',style:'color:var(--muted);margin-inline-end:8px',text:it.time||''}),it.text),el('button',{class:'xbtn',style:'width:32px;height:32px;font-size:1rem','aria-label':'מחק',onclick:()=>{m.items=m.items.filter(x=>x!==it);persist('meals',m.id);renderFood();},text:'×'})))):el('div',{class:'empty',text:'עוד לא נרשם אוכל ליום הזה. הוסף ארוחה, נשנוש או שתייה.'}));}
@@ -1011,7 +1027,7 @@ $('#fDate').onchange=renderFood;
 $('#fAdd').onclick=()=>{const t=$('#fText').value.trim();if(!t){toast('כתוב מה אכלת');return;}const m=mealDay($('#fDate').value||todayISO(),true);m.items.push({time:$('#fTime').value,text:t});persist('meals',m.id);$('#fText').value='';renderFood();};
 for(const[id,k]of[['#fDrinks','drinks'],['#fHunger','hunger']])$(id).addEventListener('change',e=>{const m=mealDay($('#fDate').value||todayISO(),true);m[k]=e.target.value;persist('meals',m.id);});
 $('#fPartial').onchange=e=>{const m=mealDay($('#fDate').value||todayISO(),true);m.partial=e.target.checked;persist('meals',m.id);};
-function foodReport(m){return[`מה אכלתי ${fmtD(m.date)} (${DAYS[dayOf(m.date)]})${m.partial?' · היום עוד לא הסתיים':''}`,...(m.items||[]).map(it=>`- ${it.time?it.time+' ':''}${it.text}`),m.drinks?`שתייה: ${m.drinks}`:'',m.hunger?`רעב: ${m.hunger}`:''].filter(Boolean).join('\n');}
+function foodReport(m){return[`מה אכלתי ${fmtD(m.date)} (${DAYS[dayOf(m.date)]})${m.partial?' · היום עוד לא הסתיים':''}`,...(m.items||[]).map(it=>`- ${it.time?it.time+' ':''}${it.text}`),m.drinks?`שתייה: ${m.drinks}`:'',m.hunger?`רעב: ${m.hunger}`:'',num(m.water)?`מים: ${m.water} מ״ל מתוך יעד ${waterTarget(m.date)}`:''].filter(Boolean).join('\n');}
 $('#fSend').onclick=()=>{const m=mealDay($('#fDate').value||todayISO());if(!m||!m.items.length){toast('הוסף לפחות פריט אחד');return;}show('coach');sendChat(foodReport(m)+'\n\nתן משוב תזונתי.',[]);};
 
 /* ================= progress ================= */
@@ -1196,7 +1212,7 @@ function mergeData(d){const added=[],changed=[];let other=false;const ts=x=>x.up
   for(const w of Array.isArray(d.workouts)?d.workouts:[]){if(!w||!w.id)continue;const i=S.workouts.findIndex(x=>x.id===w.id);if(i<0){S.workouts.push(w);added.push(w.id);persist('workouts',w.id);}else if(ts(w)>ts(S.workouts[i])){S.workouts[i]=w;changed.push(w.id);persist('workouts',w.id);}}
   for(const m of Array.isArray(d.meals)?d.meals:[]){if(!m||!m.date)continue;const l=S.meals.find(x=>x.date===m.date);if(!l){S.meals.push(m);persist('meals',m.id||m.date);continue;}l.items=l.items||[];
     const keys=new Set(l.items.map(it=>(it.time||'')+'|'+it.text));let ch=false;for(const it of m.items||[]){const k=(it.time||'')+'|'+it.text;if(!keys.has(k)){l.items.push(it);keys.add(k);ch=true;}}
-    for(const f of['drinks','hunger'])if(!l[f]&&m[f]){l[f]=m[f];ch=true;}if(ch)persist('meals',l.id);}
+    for(const f of['drinks','hunger'])if(!l[f]&&m[f]){l[f]=m[f];ch=true;}if((m.updated||0)>(l.updated||0)&&m.water!=null&&m.water!==l.water){l.water=m.water;l.updated=m.updated;ch=true;}if(ch)persist('meals',l.id);}
   for(const b of Array.isArray(d.body)?d.body:[]){if(!b||!b.date)continue;const l=S.body.find(x=>x.date===b.date);if(!l){S.body.push(b);persist('body',b.id||b.date);}else if((b.updated||0)>(l.updated||0)){Object.assign(l,b);persist('body',l.id);}}
   if(d.profile&&typeof d.profile==='object'){const mine=S.profile;if((d.profile.updatedAt||0)>(mine.updatedAt||0))S.profile={...mine,...d.profile};else for(const[k,v]of Object.entries(d.profile))if(mine[k]==null||mine[k]==='')mine[k]=v;persist('profile');}
   if(Array.isArray(d.chat)){const key=m=>(m.t||0)+'|'+m.role+'|'+String(m.content).slice(0,40);const have=new Set(S.chat.map(key));let ch=false;for(const m of d.chat)if(m&&m.role&&!have.has(key(m))){S.chat.push(m);have.add(key(m));ch=true;}
